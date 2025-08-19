@@ -5,7 +5,7 @@ This repository provides an organized, reproducible implementation of the method
 ### Repository layout
 
 - `scripts/`
-  - `undistort_and_crop.py`: Barrel-distortion removal and fixed cropping for the time-lapse images (k1, k2, FOV, crop window), per Section 3.2 of the paper.
+  - `undistort_and_crop.py`: Barrel-distortion removal and fixed cropping for the time-lapse images (k1, k2, FOV, crop window).
   - `export_coco_from_yolo.py`: Runs a YOLO segmentation model on undistorted images and exports detections/masks into a COCO-style JSON with `timestep` preserved.
   - `track_with_iou.py`: Associates masks across frames using IoU and a small motion prior, adds `track_id` to annotations; track life-cycle and area-drop logic align with the paper.
   - `build_time_series_and_forecast.py`: Builds per-cap time-series ⟨x, y⟩, applies causal moving average on training windows, trains an Extra-Trees forecaster, and reports mean RMSE as in Section 3.2.
@@ -13,7 +13,7 @@ This repository provides an organized, reproducible implementation of the method
   - `yield_forecast.py`: Wiring for composing growth predictions with a species-specific weight model to generate tray-level yield forecasts (provide a serialized model to operationalize).
 - `data/`
   - `white.csv`, `brown.csv`: Species-specific paired size–weight datasets (columns: `x`, `y` in mm; `w` in grams) used for the weight regressors.
-- `configs/` (optional): Place calibration values or model paths here if desired.
+
 
 ### Installation and environment
 
@@ -25,24 +25,20 @@ conda activate mushroom-forecast
 pip install ultralytics shapely scikit-learn pillow pandas numpy opencv-python scipy
 ```
 
-If you plan to extract text from the PDF or work with notebooks, also install:
 
-```bash
-pip install PyPDF2 statsmodels
-```
 
 Note: `ultralytics` expects a compatible PyTorch; install CUDA/CPU variants as appropriate for your machine per Ultralytics documentation.
 
 ### Reproducing the methodology
 
-1) Undistort and crop time-lapse images
+1) Undistort and crop time-lapse images using default parameters
 
 ```bash
 python scripts/undistort_and_crop.py --input /path/to/images --output undistorted_cropped \
   --k1 -0.060 --k2 0.0 --fov 110 --crop_x 170 --crop_y 165 --crop_w 1580 --crop_h 697
 ```
 
-2) Segment frames and export COCO JSON
+2) Segment frames and export COCO JSON -- model .pt file will be made available upon request
 
 ```bash
 python scripts/export_coco_from_yolo.py --images undistorted_cropped --model best_v3.pt --out coco_annotations.json --conf 0.1
@@ -74,7 +70,6 @@ Train or load a serialized weight regressor (e.g., scikit-learn via joblib) and 
 python scripts/yield_forecast.py --tracked coco_tracked.json --species brown --model path/to/weight_model.joblib
 ```
 
-This script shows how to integrate the growth model outputs with a species-aware weight mapping to produce the tray-level curve analogous to Figure 12 in the paper.
 
 ### Methodology notes (paper alignment)
 

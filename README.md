@@ -31,7 +31,7 @@ Note: `ultralytics` expects a compatible PyTorch; install CUDA/CPU variants as a
 
 ### Reproducing the methodology
 
-1) Undistort and crop time-lapse images using default parameters
+1) Undistort and crop time-lapse images using default parameters (images will be made available upon request)
 
 ```bash
 python scripts/undistort_and_crop.py --input /path/to/images --output undistorted_cropped \

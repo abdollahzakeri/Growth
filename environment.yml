@@ -1,0 +1,20 @@
+name: mushroom-forecast
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+      - ultralytics
+      - shapely
+      - scikit-learn
+      - pillow
+      - pandas
+      - numpy
+      - opencv-python
+      - scipy
+      - joblib
+      - PyPDF2
+      - statsmodels
+

@@ -1,7 +1,7 @@
 ## Edge-Deployable Growth and Yield Forecasting for Commercial Mushroom Farms
 
 
-![](animation.mp4)
+![](anim.gif)
 
 
 This repository provides an organized, reproducible implementation of the methodology described in the paper “Edge-Deployable Growth and Yield Forecasting for Commercial Mushroom Farms” (ssrn-5371080.pdf). It assembles code from the original notebooks into focused scripts that follow the paper’s pipeline: undistortion and cropping, YOLO segmentation to COCO JSON, mask tracking via IoU, causal smoothing + Extra-Trees growth forecasting, and species-specific size–weight regression.

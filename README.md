@@ -1,8 +1,6 @@
 ## Edge-Deployable Growth and Yield Forecasting for Commercial Mushroom Farms
 
-<video src="animation.mp4" autoplay loop muted playsinline width="640">
-  Your browser does not support the video tag.
-</video>
+
 ![](animation.mp4)
 
 

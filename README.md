@@ -1,103 +1,74 @@
 ## Edge-Deployable Growth and Yield Forecasting for Commercial Mushroom Farms
 
-
 ![](anim.gif)
 
+Code, data, and trained models for the paper *Edge-Deployable Growth and Yield Forecasting for Commercial Mushroom Farms* (Smart Agricultural Technology, manuscript ATECH-D-26-03398). The scripts reproduce every table and figure of the revised manuscript.
 
-This repository provides an organized, reproducible implementation of the methodology described in the paper “Edge-Deployable Growth and Yield Forecasting for Commercial Mushroom Farms” (ssrn-5371080.pdf). It assembles code from the original notebooks into focused scripts that follow the paper’s pipeline: undistortion and cropping, YOLO segmentation to COCO JSON, mask tracking via IoU, causal smoothing + Extra-Trees growth forecasting, and species-specific size–weight regression.
+### Contents
 
-### Repository layout
+| Path | Content |
+|---|---|
+| `images/` | The 2,121 raw time-lapse frames (1920×1080 px, one every 15 min, 1 to 23 May 2025, one baby bella bed). Distortion correction and cropping are applied by `scripts/01_undistort_crop.py`. |
+| `data/white.csv`, `data/brown.csv` | Caliper diameters `x`, `y` (mm) and fresh weight `w` (g) of 203 white button and 203 baby bella caps. |
+| `release/tracks_t090.csv.gz` | All tracked detections with persistent track identities (139,687 detections in 3,808 tracks): frame, centroid, mask area, convex-hull ellipse diameters (px), confidence. |
+| `release/growth_trajectories.json` | The 1,617 cleaned growth trajectories (major/minor diameters in px, start frame, group id) used for forecasting. |
+| `release/growth_splits.json` | The 30 group-level training/validation/test splits (seeds 0 to 29). |
+| `release/growth_linear_ar_n1_l5.joblib` | Trained linear autoregressive growth model (n_steps = 1, l = 5). |
+| `release/weight_*.joblib`, `release/weight_split_*.json` | Trained size-to-weight regressors and the training/test indices of the weight data. |
+| `growth/` | Shared code: settings, convex-hull Fitzgibbon ellipse fit, causal moving average, weight models. |
+| `scripts/` | Numbered scripts for every step of the pipeline and every analysis in the paper. |
 
-- `scripts/`
-  - `undistort_and_crop.py`: Barrel-distortion removal and fixed cropping for the time-lapse images (k1, k2, FOV, crop window).
-  - `export_coco_from_yolo.py`: Runs a YOLO segmentation model on undistorted images and exports detections/masks into a COCO-style JSON with `timestep` preserved.
-  - `track_with_iou.py`: Associates masks across frames using IoU and a small motion prior, adds `track_id` to annotations; track life-cycle and area-drop logic align with the paper.
-  - `build_time_series_and_forecast.py`: Builds per-cap time-series ⟨x, y⟩, applies causal moving average on training windows, trains an Extra-Trees forecaster, and reports mean RMSE as in Section 3.2.
-  - `fit_weight_regressors.py`: Trains species-specific size→weight regressors on `white.csv` and `brown.csv`, reporting RMSE and mean error (ME) in line with Section 3.1 and Tables 1–2.
-  - `yield_forecast.py`: Wiring for composing growth predictions with a species-specific weight model to generate tray-level yield forecasts (provide a serialized model to operationalize).
-- `data/`
-  - `white.csv`, `brown.csv`: Species-specific paired size–weight datasets (columns: `x`, `y` in mm; `w` in grams) used for the weight regressors.
+The trained Extra-Trees growth model (n_steps = 1, l = 10) is 1.9 GB and therefore not stored in the repository; `scripts/29_export_release.py` regenerates it deterministically (`random_state=0`) from the released trajectories. The YOLOv8-X segmentation weights (`best_v3.pt`, 144 MB) are available from the authors on request; place them in `models/`.
 
+### Settings used in the paper
 
-### Installation and environment
+| Step | Setting |
+|---|---|
+| Distortion correction | Brown–Conrady, k1 = −0.078, k2 = 0, pinhole matrix from the 110° nominal field of view; output camera matrix fixed at the k1 = −0.06 scale |
+| Crop | 1580 × 697 px at offset (170, 165) |
+| Scale | ρ = Z / f = 419 mm / 879.2 px = 0.4766 mm/px (casing plane) |
+| Segmentation | YOLOv8-X instance segmentation (`best_v3.pt`), input size 1280 px, confidence threshold 0.1 |
+| Tracking | Mask IoU ≥ 0.90 with Hungarian assignment; gap tolerance 10 frames |
+| Trajectories | Convex-hull Fitzgibbon ellipse diameters; missed frames interpolated; end when the smoothed (l = 10) major diameter drops more than 10% below its running maximum; minimum 20 frames (5 h) |
+| Grouping for splits | Fragments linked when the first mask of one overlaps the last mask of an earlier one with IoU ≥ 0.3 (no time limit) |
+| Forecasting | 60/20/20 group-level splits, 30 seeds; n_steps ∈ {1, 2, 4, 8}, l ∈ {1, 5, 10, 20}, selection on validation; recursive rollout, seed frames excluded from the error |
+| Weight models | `train_test_split(test_size=0.25, random_state=42)` (152/51 caps); model selection by 5×5 repeated cross-validation on the training caps |
+| Yield analysis | 78 start images every 6 h; fragments chained into mushrooms (IoU ≥ 0.5, gap ≤ 24 h); five-fold cross-fitting over groups; 100 Monte Carlo draws per start image |
 
-Create a fresh conda env:
+### Environment
 
 ```bash
-conda create -n mushroom-forecast python=3.10 -y
+conda env create -f environment.yml
 conda activate mushroom-forecast
-pip install ultralytics shapely scikit-learn pillow pandas numpy opencv-python scipy
 ```
 
+The results were produced with Python 3.10, NumPy 1.26, SciPy 1.15, scikit-learn 1.4, pandas 2.3, Shapely 2.1, OpenCV 4.9, PyTorch 2.5, Ultralytics 8.3, and LazyPredict. Paths default to the repository root and can be changed with the environment variables `GROWTH_ROOT` (data root) and `GROWTH_RESULTS` (results folder).
 
-
-Note: `ultralytics` expects a compatible PyTorch; install CUDA/CPU variants as appropriate for your machine per Ultralytics documentation.
-
-### Reproducing the methodology
-
-1) Undistort and crop time-lapse images using default parameters (images will be made available upon request)
+### Reproducing the paper
 
 ```bash
-python scripts/undistort_and_crop.py --input /path/to/images --output undistorted_cropped \
-  --k1 -0.060 --k2 0.0 --fov 110 --crop_x 170 --crop_y 165 --crop_w 1580 --crop_h 697
+python scripts/01_undistort_crop.py -0.078 undistorted_cropped_078          # distortion correction + crop
+python scripts/02_segment.py undistorted_cropped_078 results/coco_annotations.json 0.1
+python scripts/03_track.py results/tracks_t090.pkl 0.90 10                     # IoU-Hungarian tracking
+python scripts/04_prepare_sequences.py results/tracks_t090.pkl results/seqs_t090.pkl
+for s in 0 5 10 15 20 25; do python scripts/05_forecast_splits.py results/seqs_t090.pkl $s 5 results/fc_t090; done
+python scripts/06_summarize_forecasts.py "results/fc_t090_*.pkl" results/forecast_summary_t090.json
 ```
 
-2) Segment frames and export COCO JSON -- model .pt file will be made available upon request
+| Paper item | Script |
+|---|---|
+| Table 4, Fig. 6, Fig. 9a, Fig. 10, Table B.1 | `05_forecast_splits.py`, `06_summarize_forecasts.py`, `24_figures.py` |
+| Paired contrasts (Section 3.2, Table B.2) | `07_paired_contrasts.py` |
+| Smoothing on test data, input-noise trials | `08_smoothing_and_noise.py`, `09_smoothing_noise_summary.py` |
+| Re-anchoring (Fig. 9b) | `10_reanchoring.py` |
+| Table 5, tracking sensitivity | `11_tracking_metrics.py`, `12_tracking_sensitivity.py` |
+| Grouping, leakage check, scale plausibility | `13_grouping_and_scale_checks.py`, `14_loose_grouping.py`, `16_acquisition_and_scale.py` |
+| Visual identity audit | `15_identity_audit.py` |
+| Fig. 11, occlusion results (Section 3.3) | `17_occlusion_neighbor.py`, `18_occlusion_straight_edge.py` |
+| Tables 1 to 3, Appendix A | `19_weight_models.py`, `20_weight_checks.py` |
+| Table 6, Figs. 12 and 13, sensitivity analyses | `21_yield_monte_carlo.py` (variants via `R06_CORR=1`, `R06_SCALE=0.0179`, `R06_PARALLAX=10,30`, `R06_RESID=<json>`), `25_yield_figures.py` |
+| Embedded runtime (Jetson Orin NX 16 GB, MAXN, TensorRT FP16) | `22_benchmark_jetson.py`, `23_profile_segmentation.py` |
+| Supplementary visualizations | `26_size_coverage.py`, `27_track_visualization.py`, `28_all_masks_gif.py` |
+| Released models and splits | `29_export_release.py` |
 
-```bash
-python scripts/export_coco_from_yolo.py --images undistorted_cropped --model best_v3.pt --out coco_annotations.json --conf 0.1
-```
-
-3) Track masks across frames (IoU association, motion prior, area-drop termination)
-
-```bash
-python scripts/track_with_iou.py --coco coco_annotations.json --out coco_tracked.json --min_iou 0.9 --max_dist 50 --max_lost 30 --area_drop 0.99
-```
-
-4) Build time-series and train the growth forecaster (causal smoothing on training only)
-
-```bash
-python scripts/build_time_series_and_forecast.py --tracked coco_tracked.json --n_steps 1 --window 10 --test_split 0.2
-```
-
-5) Species-specific weight regressors (using the provided datasets)
-
-```bash
-python scripts/fit_weight_regressors.py --white data/white.csv --brown data/brown.csv
-```
-
-6) Compose growth predictions with weight regressors to forecast yield
-
-Train or load a serialized weight regressor (e.g., scikit-learn via joblib) and provide it to:
-
-```bash
-python scripts/yield_forecast.py --tracked coco_tracked.json --species brown --model path/to/weight_model.joblib
-```
-
-
-### Methodology notes (paper alignment)
-
-- Distortion removal and cropping follow Section 3.2: Brown–Conrady coefficients (k1, k2), FOV-based intrinsics, and a fixed crop window matching the prepared dataset.
-- Tracking uses mask IoU with a high threshold (default 0.90), short-range centroid prior, `max_lost` dormancy, and termination on large area drop (0.99 of running max), consistent with the time-lapse interval and near-stationary assumptions.
-- Growth forecasting uses a sliding-window representation of past ⟨x, y⟩ (default `n_steps=1`), with a causal moving average on training sequences (`window=10` ~2.5 hours) to reduce segmentation jitter.
-- Weight regression is trained per species on the provided paired datasets, reporting RMSE and ME similar to the paper’s tables and discussion, using off-the-shelf regressors.
-
-### How to cite
-
-Please cite the paper as follows (BibTeX):
-
-```bibtex
-@misc{zakeri2025edge,
-  title        = {Edge-Deployable Growth and Yield Forecasting for Commercial Mushroom Farms},
-  author       = {Zakeri, Abdollah and Kang, Jiming and Koirala, Bikram and Silwal, Raman and Balan, Venkatesh and Zhu, Weihang and Benhaddou, Driss and Merchant, Fatima A.},
-  year         = {2025},
-  howpublished = {SSRN preprint},
-  note         = {SSRN: 5371080}
-}
-```
-
-### License
-
-Data and code are provided for academic and non-commercial use. See the paper and this repository for details.
-
-
+Most analysis scripts take their inputs from `results/` (written by steps 03 to 05) and are documented in their header docstrings.

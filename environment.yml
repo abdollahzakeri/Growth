@@ -6,15 +6,17 @@ dependencies:
   - python=3.10
   - pip
   - pip:
-      - ultralytics
-      - shapely
-      - scikit-learn
-      - pillow
-      - pandas
-      - numpy
-      - opencv-python
-      - scipy
+      - numpy==1.26.1
+      - scipy==1.15.2
+      - scikit-learn==1.4.2
+      - pandas==2.3.3
+      - shapely==2.1.1
+      - opencv-python==4.9.0.80
+      - torch==2.5.0
+      - ultralytics==8.3.61
+      - lazypredict
+      - lightgbm
+      - xgboost
       - joblib
-      - PyPDF2
-      - statsmodels
-
+      - matplotlib
+      - pillow

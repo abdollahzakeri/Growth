@@ -1,4 +1,4 @@
-"""R06c: tray-level yield from a single image, evaluated on MUSHROOM-level trajectories.
+"""R06d (R2 fix of relative weight residuals) / R06c: tray-level yield from a single image, evaluated on MUSHROOM-level trajectories.
 Fragments of the same cap (next fragment starts <= 24 h after the previous one ended at the same place, mask IoU >= 0.5)
 are chained; gaps between fragments are linearly interpolated. A cap leaves the cohort only when its chain ends.
 Forecast models are trained on the fragments with five-fold cross-fitting over the groups (as in R06); Monte Carlo
@@ -57,13 +57,18 @@ bd = pd.read_csv(os.path.join(ROOT, "data", "brown.csv"), encoding="utf-8-sig");
 wmodel = wmodels()[WM].fit(Xb, yb)
 def weight(d_px):
     return np.clip(wmodel.predict(np.asarray(d_px, float).reshape(-1, 2) * PIX2MM), 0, None)
-loo = np.zeros(len(yb))
+loo_pred = np.zeros(len(yb))
 for a, b in LeaveOneOut().split(Xb):
-    loo[b] = yb[b] - clone(wmodels()[WM]).fit(Xb[a], yb[a]).predict(Xb[b])
-rel_res, gm_res = loo / yb, np.sqrt(Xb[:, 0] * Xb[:, 1])
+    loo_pred[b] = clone(wmodels()[WM]).fit(Xb[a], yb[a]).predict(Xb[b])
+# R2: residual relative to the PREDICTION, so that prediction * (1 + r) reproduces the measured weight exactly
+# (R1 divided by the measured weight, which biased the reference biomass low by about 2%)
+rel_res, gm_res = (yb - loo_pred) / np.clip(loo_pred, 0.1, None), np.sqrt(Xb[:, 0] * Xb[:, 1])
 if os.environ.get("R06_RESID"):
-    nj = json.load(open(os.environ["R06_RESID"]))["nested"]; rel_res = np.array(nj["residuals_nested"]) / np.array(nj["w"]); gm_res = np.array(nj["gm"])
-rel_res = np.clip(rel_res, -0.9, 0.9)
+    nj = json.load(open(os.environ["R06_RESID"]))["nested"]; w_, r_ = np.array(nj["w"]), np.array(nj["residuals_nested"])
+    rel_res = r_ / np.clip(w_ - r_, 0.1, None); gm_res = np.array(nj["gm"])
+chk = loo_pred * (1 + (yb - loo_pred) / np.clip(loo_pred, 0.1, None))
+print(f"weight residual check: sum(measured) {yb.sum():.1f} g, sum(pred*(1+r)) {chk.sum():.1f} g, "
+      f"R1 definition would give {(loo_pred * (1 + np.clip((yb - loo_pred) / yb, -0.9, 0.9))).sum():.1f} g", flush=True)
 occ = json.load(open(OCC))["representative"]["signed_hull"]
 e_meas = np.concatenate([np.array(occ[k], float) for k in ["10", "20", "30", "40"]]); e_meas = e_meas[np.isfinite(e_meas)]
 # ---------------- cross-fitted models (folds over groups, as in R06) ----------------
